@@ -25,6 +25,7 @@
   },
   "homepage": "https://github.com/TypeForce/tsql#readme",
   "dependencies": {
+    "@types/node": "^8.0.10",
     "yargs": "^8.0.2"
   }
 }
