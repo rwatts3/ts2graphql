@@ -1,0 +1,27 @@
+{
+  "name": "tsql",
+  "version": "1.0.0",
+  "description": "Convert a set of TypeScript source files to a GraphGL schema",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TypeForce/tsql.git"
+  },
+  "keywords": [
+    "graphql",
+    "typescript",
+    "converter",
+    "code-generator",
+    "api",
+    "api-generator"
+  ],
+  "author": "Sam Vervaeck",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/TypeForce/tsql/issues"
+  },
+  "homepage": "https://github.com/TypeForce/tsql#readme"
+}
