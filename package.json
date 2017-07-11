@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Convert a set of TypeScript source files to a GraphGL schema",
   "main": "lib/index.js",
+  "bin": {
+    "ts2graphql": "lib/bin/ts2graphql.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
