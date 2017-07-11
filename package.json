@@ -29,6 +29,7 @@
   "homepage": "https://github.com/TypeForce/tsql#readme",
   "dependencies": {
     "@types/node": "^8.0.10",
+    "case": "^1.5.2",
     "graphql": "^0.10.3",
     "typescript": "^2.4.1",
     "yargs": "^8.0.2"
