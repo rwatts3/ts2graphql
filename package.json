@@ -7,6 +7,7 @@
     "tsquery": "lib/bin/tsquery.js"
   },
   "scripts": {
+    "gen-tsql": "ts2graphql typescript/lib/typescript.d.ts --match ts.Node.kind > src/typescript.ql",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
