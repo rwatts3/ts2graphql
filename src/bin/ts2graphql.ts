@@ -20,6 +20,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE. 
 
+// T̶O̶D̶O̶ ̶r̶e̶s̶u̶l̶t̶i̶n̶g̶ ̶t̶y̶p̶e̶ ̶n̶o̶d̶e̶s̶ ̶s̶h̶o̶u̶l̶d̶ ̶b̶e̶ ̶f̶i̶l̶t̶e̶r̶e̶d̶ ̶o̶n̶ ̶u̶n̶i̶q̶u̶e̶n̶e̶s̶s̶
+// TODO intermediate interfaces should be added
+// FIXME type nodes should use TypeScript's internel `updateNode` procedures if possible
+
 import "source-map-support/register"
 
 import * as path from "path"
@@ -57,6 +61,7 @@ if (node === undefined) {
 
 const classlikes = findClassLikesWithMember(program, <ts.ClassElement>node)
 const enumDecls: ts.EnumDeclaration[] = []
+const interfaces: ts.InterfaceDeclaration[] = []
 const unionTypes: [string, any][] = []
 
 let out = ''
@@ -67,7 +72,10 @@ for (const classlike of classlikes) {
     if (sym.name[0] !== '_' && isProperty(sym.declarations[0])) {
       const decl = <Property>sym.declarations[0]
       const resolved = resolveTypeAliases(decl.type)
-      const types = flattenUnionTypes(resolved).types.filter(type => type.kind !== ts.SyntaxKind.UndefinedKeyword)
+      const types = uniqueTypeNodes(gatherUnionTypes(resolved).types.filter(type => type.kind !== ts.SyntaxKind.UndefinedKeyword))
+      //for (const baseType of getBaseTypes(checker.getTypeAtLocation(decl.type))) {
+        //interfaces.push(<ts.InterfaceDeclaration>baseType.symbol.declarations[0])       
+      //}
       if (types.length === 1) {
         const type = types[0]
         if (isArray(decl.type)) {
@@ -95,6 +103,15 @@ for (const [name, types] of unionTypes) {
 
 console.log(out)
 
+// FIXME
+function getBaseTypes(type: ts.Type) {
+  try {
+    return checker.getBaseTypes(<ts.InterfaceType>type)
+  } catch(e) {
+    return []
+  }
+}
+
 function isPrimitiveType(type: ts.TypeNode) {
   return type.kind === ts.SyntaxKind.AnyKeyword
       || type.kind === ts.SyntaxKind.NumberKeyword
@@ -117,7 +134,23 @@ function isBitmask(enumDecl: ts.EnumDeclaration) {
     .length > 0
 }
 
-function flattenUnionTypes(typeNode: ts.TypeNode): any {
+function areTypeNodesEqual(a: ts.TypeNode, b: ts.TypeNode) {
+  const typeA = checker.getTypeAtLocation(a)
+  const typeB = checker.getTypeAtLocation(b)
+  return checker.isTypeAssignableTo(typeA, typeB)
+      && checker.isTypeAssignableTo(typeB, typeA)
+}
+
+function uniqueTypeNodes(typeNodes: ts.TypeNode[]) {
+  const res = []
+  for (const typeNode of typeNodes) {
+    if (res.filter(node => areTypeNodesEqual(node, typeNode)).length === 0)
+      res.push(typeNode)
+  }
+  return res
+}
+
+function gatherUnionTypes(typeNode: ts.TypeNode): any {
 
   let types: ts.TypeNode[] = []
 
@@ -140,6 +173,10 @@ function flattenUnionTypes(typeNode: ts.TypeNode): any {
   }
 }
 
+function asNodeArray<T extends ts.Node>(array: T[] | undefined): ts.NodeArray<T> | undefined {
+  return array ? ts.createNodeArray(array) : undefined;
+}
+
 function resolveTypeAliases(typeNode: ts.TypeNode, ): any {
 
   const mapping = new Map<ts.Node, any>()
@@ -154,17 +191,21 @@ function resolveTypeAliases(typeNode: ts.TypeNode, ): any {
     //return mapping
   //}
 
+  function cloneNode<Node extends ts.Node>(node: Node): Node {
+    const cloned = Object.assign({}, node)
+    cloned.pos = -1
+    cloned.end = -1
+    return cloned
+  }
+
   function visit(node: ts.Node, typeArgs: ts.TypeNode[] | undefined, typeParamStack: { [name: string]: ts.TypeNode }[]): any {
     if (mapping.has(node))
       return mapping.get(node)
     switch (node.kind) {
     case ts.SyntaxKind.PropertySignature:
     case ts.SyntaxKind.PropertyDeclaration: {
-      const prop = <ts.PropertySignature & ts.PropertyDeclaration>node;
-      const converted: any = {
-        kind: prop.kind,
-        name: prop.name,
-      }
+      const prop = <ts.PropertySignature | ts.PropertyDeclaration>node;
+      const converted = cloneNode(prop)
       mapping.set(node, converted)
       converted.type = visit(prop.type, typeArgs, typeParamStack)
       return converted;
@@ -179,28 +220,23 @@ function resolveTypeAliases(typeNode: ts.TypeNode, ): any {
     case ts.SyntaxKind.InterfaceDeclaration:
     case ts.SyntaxKind.ClassDeclaration:
       const classlike = <ts.ClassLikeDeclaration>node; {
-      const converted: any = {
-        kind: node.kind,
-        name: classlike.name,
-      }
+      const converted = cloneNode(classlike)
       if (classlike.typeParameters === undefined) {
         mapping.set(node, converted)
-        converted.members = classlike.members.map(el => visit(el, typeArgs, typeParamStack))
+        converted.members = asNodeArray(classlike.members.map(el => visit(el, typeArgs, typeParamStack)))
         return converted
       } else {
         if (typeArgs === undefined)
           throw new Error(`required some type arguments but none were found`)
         typeParamStack.push(zipObject(classlike.typeParameters.map(p => p.name.text), typeArgs));
         typeArgs = undefined
-        converted.members = classlike.members.map(el => visit(el, typeArgs, typeParamStack))
+        converted.members = asNodeArray(classlike.members.map(el => visit(el, typeArgs, typeParamStack)));
         return converted
       }
     } case ts.SyntaxKind.UnionType: {
-      const converted: any = {
-        kind: ts.SyntaxKind.UnionType,
-      }
+      const converted: any = cloneNode(node)
       mapping.set(node, converted);
-      converted.types = (<ts.UnionTypeNode>node).types.map(el => visit(el, undefined, typeParamStack));
+      converted.types = asNodeArray((<ts.UnionTypeNode>node).types.map(el => visit(el, undefined, typeParamStack)));
       return converted
     } case ts.SyntaxKind.TypeAliasDeclaration:
       const typeAlias = <ts.TypeAliasDeclaration>node;
@@ -235,25 +271,20 @@ function isClassLike(node: ts.Node) {
       || node.kind === ts.SyntaxKind.InterfaceDeclaration
 }
 
-// FIXME
+// FIXME I should also check the source file
 function isArray(node: ts.Node) {
   const type = checker.getTypeAtLocation(node)
-  try {
-    return checker
-        .getBaseTypes(<ts.InterfaceType>type)
-        .filter(type => type.symbol && type.symbol.name === 'Array')
-        .length > 0
-  } catch(e) {
-    return false
-  }
+  return getBaseTypes(type)
+      .filter(type => type.symbol && type.symbol.name === 'Array')
+      .length > 0
 }
 
 function printQLType(node: ts.Node, optional: boolean = true) {
   let out = ''
   switch (node.kind) {
-  //case ts.SyntaxKind.UnionType:
-    //out += (<ts.UnionTypeNode>node).types.map(type => printQLType(node)).join(' | ')
-    //break;
+  case ts.SyntaxKind.UnionType:
+    out += (<ts.UnionTypeNode>node).types.map(type => printQLType(node)).join(' | ')
+    break;
   case ts.SyntaxKind.EnumDeclaration:
     out += printQLType((<ts.EnumDeclaration>node).name);
     break;
