@@ -21,7 +21,7 @@
 // SOFTWARE. 
 
 // T̶O̶D̶O̶ ̶r̶e̶s̶u̶l̶t̶i̶n̶g̶ ̶t̶y̶p̶e̶ ̶n̶o̶d̶e̶s̶ ̶s̶h̶o̶u̶l̶d̶ ̶b̶e̶ ̶f̶i̶l̶t̶e̶r̶e̶d̶ ̶o̶n̶ ̶u̶n̶i̶q̶u̶e̶n̶e̶s̶s̶
-// TODO intermediate interfaces should be added
+// T̶O̶D̶O̶ ̶i̶n̶t̶e̶r̶m̶e̶d̶i̶a̶t̶e̶ ̶i̶n̶t̶e̶r̶f̶a̶c̶e̶s̶ ̶s̶h̶o̶u̶l̶d̶ ̶b̶e̶ ̶a̶d̶d̶e̶d̶
 // FIXME type nodes should use TypeScript's internel `updateNode` procedures if possible
 
 import "source-map-support/register"
@@ -61,7 +61,7 @@ if (node === undefined) {
 
 const classlikes = findClassLikesWithMember(program, <ts.ClassElement>node)
 const enumDecls: ts.EnumDeclaration[] = []
-const interfaces: ts.InterfaceDeclaration[] = []
+const interfaces = new Set<ts.InterfaceDeclaration>()
 const unionTypes: [string, any][] = []
 
 let out = ''
@@ -69,33 +69,36 @@ let out = ''
 for (const classlike of classlikes) {
   out += `type ${classlike.name.text} {\n`
   for (const sym of checker.getPropertiesOfType(checker.getTypeAtLocation(classlike))) {
-    if (sym.name[0] !== '_' && isProperty(sym.declarations[0])) {
-      const decl = <Property>sym.declarations[0]
-      const resolved = resolveTypeAliases(decl.type)
-      const types = uniqueTypeNodes(gatherUnionTypes(resolved).types.filter(type => type.kind !== ts.SyntaxKind.UndefinedKeyword))
-      //for (const baseType of getBaseTypes(checker.getTypeAtLocation(decl.type))) {
-        //interfaces.push(<ts.InterfaceDeclaration>baseType.symbol.declarations[0])       
-      //}
-      if (types.length === 1) {
-        const type = types[0]
-        if (isArray(decl.type)) {
-          const indexType = checker.getIndexTypeOfType(checker.getTypeAtLocation(decl.type), ts.IndexKind.Number)
-          if (indexType.symbol !== undefined)
-            out += `  ${sym.name}: [${printQLType(indexType.symbol.declarations[0])}!]\n`
-        } else {
-          out += `  ${sym.name}: ${printQLType(type, isNullable(decl.type) || decl.questionToken !== undefined)}\n`
-        }
-      } else {
-        const extraName = classlike.name.text+pascal(sym.name)
-        unionTypes.push([extraName, types])
-        out += `  ${sym.name}: ${extraName}\n`
-        if (isNullable(decl.type))
-          out += '!'
-      }
-    }
+    out += printQLProp(sym, classlike);
   }
   out += '}\n\n'
 }
+
+const visited = new Set<ts.InterfaceDeclaration>()
+
+for (const intf of interfaces) {
+  out += `interface ${intf.name.text} {\n`
+  for (const sym of checker.getPropertiesOfType(checker.getTypeAtLocation(intf))) {
+    out += printQLProp(sym, intf)
+  }
+  out += '}\n\n'
+}
+
+//while (interfaces.size > 0) {
+  //const intf = interfaces[Symbol.iterator]().next().value
+  //interfaces.delete(intf)
+  ////const supers = getBaseTypes(checker.getTypeAtLocation(intf))
+    ////.filter(type => type.symbol !== undefined)
+    //////.map(type => type.symbol)
+  //console.log(supers.map(s => s.symbol.name))
+  //out += `interface ${intf.name.text} {\n`
+  //for (const sym of checker.getPropertiesOfType(checker.getTypeAtLocation(intf))) {
+    //if (supers.filter(s => checker.getPropertyOfType(s, sym.name)).length === 0) {
+      //out += printQLProp(sym, intf)
+    //}
+  //}
+  //out += '}\n\n'
+//}
 
 for (const [name, types] of unionTypes) {
   out += `union ${name} = ${types.map(printQLType).join(' | ')}\n\n`
@@ -110,6 +113,35 @@ function getBaseTypes(type: ts.Type) {
   } catch(e) {
     return []
   }
+}
+
+function printQLProp(sym: ts.Symbol, classlike: ts.ClassLikeDeclaration) {
+  let out = ''
+  if (sym.name[0] !== '_' && isProperty(sym.declarations[0])) {
+    const decl = <Property>sym.declarations[0]
+    const resolved = resolveTypeAliases(decl.type)
+    const types = uniqueTypeNodes(gatherUnionTypes(resolved).types.filter(type => type.kind !== ts.SyntaxKind.UndefinedKeyword))
+    for (const baseType of getBaseTypes(checker.getTypeAtLocation(decl.type))) {
+      interfaces.add(<ts.InterfaceDeclaration>baseType.symbol.declarations[0])       
+    }
+    if (types.length === 1) {
+      const type = types[0]
+      if (isArray(decl.type)) {
+        const indexType = checker.getIndexTypeOfType(checker.getTypeAtLocation(decl.type), ts.IndexKind.Number)
+        if (indexType.symbol !== undefined)
+          out += `  ${sym.name}: [${printQLType(indexType.symbol.declarations[0])}!]\n`
+      } else {
+        out += `  ${sym.name}: ${printQLType(type, isNullable(decl.type) || decl.questionToken !== undefined)}\n`
+      }
+    } else {
+      const extraName = classlike.name.text+pascal(sym.name)
+      unionTypes.push([extraName, types])
+      out += `  ${sym.name}: ${extraName}\n`
+      if (isNullable(decl.type))
+        out += '!'
+    }
+  }
+  return out
 }
 
 function isPrimitiveType(type: ts.TypeNode) {
